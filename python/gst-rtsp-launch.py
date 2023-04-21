@@ -6,7 +6,7 @@ import argparse
 parser = argparse.ArgumentParser(description="gst-rtsp-launch-py V0.2")
 parser.add_argument('-v', '--verbose', action='store_true', help='Make script chatty')
 parser.add_argument('-f', '--file', action='store', default="v4l2ctl.json", help='Video Configuration file')
-parser.add_argument('-t', '--type', action='store', default="picam", help='picam, usbcam, filesrc or testsrc')
+parser.add_argument('-t', '--type', action='store', default="picam", help='libcamera, picam, usbcam, filesrc or testsrc')
 parser.add_argument('-d', '--device', action='store', default="/dev/video0", help='Video Device eg /dev/video0 or File eg /home/pi/testimage.jpg')
 parser.add_argument('-P', '--rtspport', action='store', default=554, help='Set RTSP port')
 parser.add_argument('-u', '--rtspname', action='store', default="live", help='Set RTSP name')
@@ -337,6 +337,15 @@ class StreamServer:
 				components.append('videotestsrc pattern=black is-live=true')
 				components.append('video/x-raw,width='+str(self.width)+',height='+str(self.height)+',framerate='+str(self.fps)+'/1')
 				components.append('gdkpixbufoverlay location="' + self.device + '" overlay-width=' + str(self.width) + ' overlay-height=' + str(self.height))
+
+			elif self.type == "libcamera":
+				# libcamera handles a lot of stuff for us and outputs raw video through it's magic.
+
+				# Ignore most of the parameters
+				log.info("libcamera ignored most of the parameters")
+
+				components.append('libcamerasrc')
+				components.append('video/x-raw,width='+str(self.width)+',height='+str(self.height)+',framerate='+str(self.fps)+'/1')
 
 			components.append('clockoverlay')
 

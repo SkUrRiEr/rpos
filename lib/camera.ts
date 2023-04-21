@@ -60,6 +60,13 @@ class Camera {
           process.exit(1);
         }
       }
+      if (this.config.CameraType == 'libcamera') {
+        if (this.config.RTSPServer != 3) {
+          // Only GStreamer RTSP is supported now
+          console.log('Only GStreamer RTSP mode is supported for libcamera video');
+          process.exit(1);
+        }
+      }
       if (this.config.CameraType == 'filesrc') {
         if (this.config.RTSPServer != 3) {
           // Only GStreamer RTSP is supported now
