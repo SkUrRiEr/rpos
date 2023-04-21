@@ -270,8 +270,6 @@ class StreamServer:
 
 
 	def build_gst_pipeline(self):
-		final_codec = self.codec
-
 		if self.type == "picam":
 			# This asks the Pi GPU to generate H264 video data which is then passed out via RTSP
 			# Because the pipleline receives H264 video data (NALs) is not possible to add the clock overlay
@@ -298,6 +296,21 @@ class StreamServer:
 			else:
 				log.error("Illegal codec")
 
+		elif self.type == "usbcam": # usbcam USB Camera
+			# Ignore most of the parameters
+			log.info("USB camera ignored most of the parameters")
+			launch_str = 'v4l2src is-live=true device='+self.device+' brightness='+str(self.brightness)+' contrast='+str(self.contrast)+' saturation='+str(self.saturation)
+
+			launch_str = launch_str + ' ! image/jpeg, framerate='+str(self.fps)+'/1, width='+str(self.width)+', height='+str(self.height)
+
+			if self.codec == 0:
+				launch_str = launch_str + ' ! queue ! jpegdec'
+				launch_str = launch_str + ' ! queue ! x264enc tune=zerolatency'
+			elif self.codec == 1:
+				pass
+			else:
+				log.error("Illegal codec")
+
 		else:
 			if self.type == "testsrc":
 				# Generate a test image, encoded to H264 using libx264 or MJPEG. On a Pi this could have passed the raw image to the GPU (eg omxh264enc)
@@ -317,28 +330,18 @@ class StreamServer:
 				launch_str = 'videotestsrc pattern=black is-live=true ! video/x-raw,width='+str(self.width)+',height='+str(self.height)+',framerate='+str(self.fps)+'/1 '
 				launch_str = launch_str + ' ! gdkpixbufoverlay location="' + self.device + '" overlay-width=' + str(self.width) + ' overlay-height=' + str(self.height) + ' '
 
-			else: # usbcam USB Camera
-				# Ignore most of the parameters
-				log.info("USB camera ignored most of the parameters")
-				launch_str = 'v4l2src is-live=true device='+self.device+' brightness='+str(self.brightness)+' contrast='+str(self.contrast)+' saturation='+str(self.saturation)
-				launch_str = launch_str + ' ! queue ! jpegdec'
-
-				final_codec = 0 # Always H.264
-
-				# TODO .... allow MJPEG output codec
-
 			launch_str = launch_str + ' ! clockoverlay'
 
-			if final_codec == 0:
+			if self.codec == 0:
 				launch_str = launch_str + ' ! queue ! x264enc tune=zerolatency'
-			elif final_codec == 1:
+			elif self.codec == 1:
 				launch_str = launch_str + ' ! jpegenc'
 			else:
 				log.error("Illegal codec")
 
-		if final_codec == 0:
+		if self.codec == 0:
 			launch_str = launch_str + ' ! h264parse ! rtph264pay name=pay0 pt=96'
-		elif final_codec == 1:
+		elif self.codec == 1:
 			launch_str = launch_str + ' ! jpegparse ! rtpjpegpay name=pay0 pt=96'
 		else:
 			log.error("Illegal codec")
