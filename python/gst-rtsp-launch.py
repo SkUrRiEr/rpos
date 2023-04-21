@@ -270,12 +270,14 @@ class StreamServer:
 
 
 	def build_gst_pipeline(self):
+		components = []
+
 		if self.type == "picam":
 			# This asks the Pi GPU to generate H264 video data which is then passed out via RTSP
 			# Because the pipleline receives H264 video data (NALs) is not possible to add the clock overlay
 			# To add a clock, we must get raw video from the GPU and then add the clock, and then pass into the GPU to encode (or use libx264 to encode in software)
 
-			launch_str = 	'rpicamsrc preview=false bitrate='+str(self.bitrate)+' keyframe-interval='+str(self.h264_i_frame_period)+' drc='+str(self.drc)+ \
+			source = 	'rpicamsrc preview=false bitrate='+str(self.bitrate)+' keyframe-interval='+str(self.h264_i_frame_period)+' drc='+str(self.drc)+ \
 								' image-effect=denoise shutter-speed='+str(self.shutter)+' iso='+str(self.iso)+ \
 								' brightness='+str(self.brightness)+' contrast='+str(self.contrast)+' saturation='+str(self.saturation)+ \
 								' sharpness='+str(self.sharpness)+' awb-mode='+str(self.white_balance)+ ' rotation='+str(self.rotation) + \
@@ -283,29 +285,33 @@ class StreamServer:
 
 			if self.white_balance == 0:
 				log.info("Using custom white balance settings")
-				launch_str = launch_str + 'awb-gain-red='+self.gain_red
-				launch_str = launch_str + 'awb-gain-green='+self.gain_green
-				launch_str = launch_str + 'awb-gain-blue='+self.gain_blue
+				source = source + 'awb-gain-red='+self.gain_red
+				source = source + 'awb-gain-green='+self.gain_green
+				source = source + 'awb-gain-blue='+self.gain_blue
+
+			components.append(source)
 
 			# Completing the pipe
 			# By defining the video/x-264 or image/jpeg, the rpicamsrc module learns what output format to generate
 			if self.codec == 0:
-				launch_str = launch_str + ' ! video/x-h264, framerate='+str(self.fps)+'/1, width='+str(self.width)+', height='+str(self.height)
+				components.append('video/x-h264, framerate='+str(self.fps)+'/1, width='+str(self.width)+', height='+str(self.height))
 			elif self.codec == 1:
-				launch_str = launch_str + ' ! image/jpeg, framerate='+str(self.fps)+'/1, width='+str(self.width)+', height='+str(self.height)
+				components.append('image/jpeg, framerate='+str(self.fps)+'/1, width='+str(self.width)+', height='+str(self.height))
 			else:
 				log.error("Illegal codec")
 
 		elif self.type == "usbcam": # usbcam USB Camera
 			# Ignore most of the parameters
 			log.info("USB camera ignored most of the parameters")
-			launch_str = 'v4l2src is-live=true device='+self.device+' brightness='+str(self.brightness)+' contrast='+str(self.contrast)+' saturation='+str(self.saturation)
+			components.append('v4l2src is-live=true device='+self.device+' brightness='+str(self.brightness)+' contrast='+str(self.contrast)+' saturation='+str(self.saturation))
 
-			launch_str = launch_str + ' ! image/jpeg, framerate='+str(self.fps)+'/1, width='+str(self.width)+', height='+str(self.height)
+			components.append('image/jpeg, framerate='+str(self.fps)+'/1, width='+str(self.width)+', height='+str(self.height))
 
 			if self.codec == 0:
-				launch_str = launch_str + ' ! queue ! jpegdec'
-				launch_str = launch_str + ' ! queue ! x264enc tune=zerolatency'
+				components.append('queue')
+				components.append('jpegdec')
+				components.append('queue')
+				components.append('x264enc tune=zerolatency')
 			elif self.codec == 1:
 				pass
 			else:
@@ -317,7 +323,8 @@ class StreamServer:
 
 				# Ignore most of the parameters
 				log.info("Test camera ignored most of the parameters")
-				launch_str = 'videotestsrc pattern=ball ! video/x-raw,width='+str(self.width)+',height='+str(self.height)+',framerate='+str(self.fps)+'/1 '
+				components.append('videotestsrc pattern=ball')
+				components.append('video/x-raw,width='+str(self.width)+',height='+str(self.height)+',framerate='+str(self.fps)+'/1')
 
 			elif self.type == "filesrc":
 				# Generate a black test image and overlay a jpeg (scaling to fit the image). Encoded to H264 using libx264.
@@ -327,26 +334,30 @@ class StreamServer:
 				# Ignore most of the parameters
 				log.info("Test camera ignored most of the parameters")
 
-				launch_str = 'videotestsrc pattern=black is-live=true ! video/x-raw,width='+str(self.width)+',height='+str(self.height)+',framerate='+str(self.fps)+'/1 '
-				launch_str = launch_str + ' ! gdkpixbufoverlay location="' + self.device + '" overlay-width=' + str(self.width) + ' overlay-height=' + str(self.height) + ' '
+				components.append('videotestsrc pattern=black is-live=true')
+				components.append('video/x-raw,width='+str(self.width)+',height='+str(self.height)+',framerate='+str(self.fps)+'/1')
+				components.append('gdkpixbufoverlay location="' + self.device + '" overlay-width=' + str(self.width) + ' overlay-height=' + str(self.height))
 
-			launch_str = launch_str + ' ! clockoverlay'
+			components.append('clockoverlay')
 
 			if self.codec == 0:
-				launch_str = launch_str + ' ! queue ! x264enc tune=zerolatency'
+				components.append('queue')
+				components.append('x264enc tune=zerolatency')
 			elif self.codec == 1:
-				launch_str = launch_str + ' ! jpegenc'
+				components.append('jpegenc')
 			else:
 				log.error("Illegal codec")
 
 		if self.codec == 0:
-			launch_str = launch_str + ' ! h264parse ! rtph264pay name=pay0 pt=96'
+			components.append('h264parse')
+			components.append('rtph264pay name=pay0 pt=96')
 		elif self.codec == 1:
-			launch_str = launch_str + ' ! jpegparse ! rtpjpegpay name=pay0 pt=96'
+			components.append('jpegparse')
+			components.append('rtpjpegpay name=pay0 pt=96')
 		else:
 			log.error("Illegal codec")
 
-		return launch_str
+		return components
 
 	def launch(self):
 		log.debug("StreamServer.launch")
@@ -354,7 +365,9 @@ class StreamServer:
 			log.debug("StreamServer.launch called on running instance.")
 			self.stop() # Need to stop any instances first
 
-		launch_str = self.build_gst_pipeline()
+		components = self.build_gst_pipeline()
+
+		launch_str = " ! ".join(components)
 
 		launch_str = f"( {launch_str} )"
 
